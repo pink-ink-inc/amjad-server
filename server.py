@@ -31,6 +31,18 @@ def echo_json():
 def repr_route(key):
     return json.dumps(repr(key), indent=2)
 
+@app.route('/api/show/<key>')
+def show_key(key):
+    return json.dumps ( definite_strategy (
+        {
+              'string': lambda x: redis.get(x)
+            , 'hash': lambda x: redis.hgetall(x)
+            , 'list': lambda x: redis.lrange(x,0,-1)
+        }
+        , redis.type(key)
+        , key
+        ) )
+
 @app.route('/api/render/<key>')
 def render_route(key):
     return render(key)
@@ -59,6 +71,25 @@ def add_key(key):
 def del_key(key):
     return json.dumps ( redis.delete(key), indent = 2 )
 
+@app.route('/api/flatten/<key>')
+def flatten(key):
+    def f(key):
+        return ( definite_strategy (
+            { 'list': lambda x: reduce(lambda x,y: x+y, [ f(a) if a[0:2] == '::' or a[0:2] == ':#' else [a] for a in redis.lrange(x, 0, -1) ])
+                  , 'hash': lambda x: [redis.hgetall(x)]
+                  , 'none': lambda x: []
+                  , 'string': lambda x: [ f(a) if a[0:2] == '::' else a for a in [redis.get(x)] ]
+                  }
+                  , redis.type(key)
+                  , key
+                  , default_strategy = 'hash'
+                  )
+                )
+
+    return json.dumps (f(key)
+            , indent = 2
+            )
+
 
 def render(key):
     # print 'rendering ' + key
@@ -86,6 +117,7 @@ def repr(key):
     return {
               'key': key
             , 'repr': strategy ( strategies, key_type, key )
+            , 'type': redis.type(key)
         }
 
 def strategy (strategies, key, value):
@@ -127,7 +159,6 @@ def repr_hash(key):
         return dict ( [ (key, repr(hash_[key])) for key in hash_.keys() ] )
     else:
         return hash_
-                
 
 def repr_none(key):
     return ''
@@ -163,16 +194,15 @@ def render_hash(key):
                 , redis.lrange ( redis.hget ( key, 'values' ), 0, -1 )
                 ) )
 
+    def render_hash_values(key):
+        return redis.hgetall(key)
+
     return definite_strategy (
                 { ':#': render_hash_template
-                # , ':@': render_hash_values
+                , ':@': render_hash_values
                 , '': str
                 }
                 , key[0:2], key)
-
-
-    def render_hash_values(key):
-        pass
 
 
 if __name__ == '__main__':
