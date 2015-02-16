@@ -52,7 +52,9 @@ def list_keys(key):
     return json.dumps (redis.keys(key), indent=2)
 
 @app.route('/api/add/<key>', methods = ['POST'])
-def add_key(key):
+def add_key(key): return add_key_f(key)
+
+def add_key_f(key):
     try:
         strategies = {
               'string': lambda (key, value): redis.set ( key, value )
@@ -68,8 +70,17 @@ def add_key(key):
         return str(e)
 
 @app.route('/api/del/<key>', methods = ['POST'])
-def del_key(key):
+def del_key(key): return del_key_f(key)
+
+def del_key_f(key):
     return json.dumps ( redis.delete(key), indent = 2 )
+
+@app.route('/api/rewrite/<key>', methods = ['POST'])
+def rewrite(key):
+    if redis.type(key) == 'list':
+        del_key_f(key)
+    return add_key_f(key)
+
 
 @app.route('/api/flatten/<key>')
 def flatten(key):
